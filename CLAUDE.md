@@ -37,16 +37,22 @@ Isso exige três coisas, nesta ordem de dependência:
 
 ## 3. O que já funciona. Não quebre.
 
-**Tarefa agendada diária**, no app do Claude, seção Programado, "Escaneamentos QT —
-relatório e planilha 08:00". Roda todo dia às 08h00 desde 07/08/2026, sem falhar.
-Puxa `cliques_avaliacao` do Supabase, baixa `build.py` do Drive, gera a planilha,
-sobe no Drive, escreve o relatório e dispara PushNotification.
+**A rodada diária tem três etapas, em hosts diferentes.** Desde 26/08/2026:
 
-**`build_planilha_escaneamentos.py`** no Drive, id `11dfk2ukTHgW1bEN2m7iapYUsT2h_QuB8` (v2.1, desde 26/08/2026).
-A tarefa diária acha o arquivo **pelo título**, não pelo id, então trocar de versão não exige
-mexer no prompt. Só pode existir um arquivo com esse título exato; as versões velhas ficam
-renomeadas com sufixo.
-É a definição oficial da planilha. Abas: Diário, Matriz, Pareamento, Atendentes, Pagamento, Base, Leitura.
+| Etapa | Onde | Quando |
+|---|---|---|
+| Busca as avaliações no Google, grava em `avaliacoes` | Edge Function `sincroniza-avaliacoes`, região `sa-east-1`, chamada por `cron.job` | 07h00 SP |
+| Puxa os dados, gera a planilha, sobe no Drive, grava em `relatorio_diario` | GitHub Actions `planilha-diaria` | 07h20 SP |
+| Lê `relatorio_diario`, escreve o relatório, dispara PushNotification | Tarefa agendada do app do Claude | 08h00 SP |
+
+A geração da planilha saiu da tarefa do Claude porque o container dela não tem
+egresso: subir o arquivo exigia passá-lo inteiro em base64 num parâmetro de
+ferramenta, e com 55 mil caracteres ele chegava truncado, abrindo normalmente e
+sem nenhuma célula dentro. Ver NOTAS §10.
+
+**`build_planilha_escaneamentos.py`**, **no repositório**, é a definição oficial da planilha.
+Quem o executa é o GitHub Actions. A cópia no Drive virou histórico e não é mais lida por
+ninguém: não a edite achando que muda alguma coisa. Abas: Diário, Matriz, Pareamento, Atendentes, Pagamento, Base, Leitura.
 Reconstrói tudo a cada execução, nunca acrescenta linha. Matriz e Atendentes são
 fórmulas sobre Diário.
 
@@ -293,9 +299,17 @@ vivas ao mesmo tempo, e só apague a antiga depois que a `sonda-reviews` passar.
 - Edge Functions publicadas: `sincroniza-avaliacoes` (v3), `sonda-reviews` (v2)
 - As duas são descartáveis se §5 falhar
 
+**GitHub Actions**, repositório `70math-hash/google-qt`
+- `planilha-diaria` roda `10h20` UTC, que é 07h20 SP. Também dá para disparar à mão.
+- `validar` roda a cada push que mexe no build, nos fixtures ou em `acoes/`.
+- Segredos: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `GBP_CLIENT_ID`,
+  `GBP_CLIENT_SECRET`, `GDRIVE_REFRESH_TOKEN`, `DRIVE_PASTA_ID`.
+- O `GDRIVE_REFRESH_TOKEN` é um token separado, com escopo `drive.file`, que não é
+  sensível. Não use o escopo `drive` inteiro: ele é restrito e exigiria revisão do Google.
+
 **Google Drive**
 - Pasta `14Iv1VAMACSXY100eKp4g495OYPTsGgS0`
-- `build_planilha_escaneamentos.py` id `11dfk2ukTHgW1bEN2m7iapYUsT2h_QuB8` (v2.1). Procurar pelo título, não pelo id
+- `build_planilha_escaneamentos.py` id `11dfk2ukTHgW1bEN2m7iapYUsT2h_QuB8` (v2.1). **Histórico:** quem manda é a cópia do repositório
 - Rollback: `build_planilha_escaneamentos_v2.0_ate_2026-08-26.py` id `1cel_jwKuzsJeB9LOktB6KegKYnN1bpvp`, e `build_planilha_escaneamentos_v1_ate_2026-08-26.py` id `1AHv9xdMrcg__gE_V5bk61cYZ4wnYwkfj`
 - `fetch_reviews.py` id `1rTd34qEBdfqyVhKgNAeHAOJiHJ-la53E`
 

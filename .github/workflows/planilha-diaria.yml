@@ -1,0 +1,70 @@
+name: Planilha diaria
+
+# 10h20 UTC = 07h20 de Sao Paulo, vinte minutos depois da Edge Function
+# sincroniza-avaliacoes, que roda as 07h00, e quarenta antes do relatorio das 08h00.
+on:
+  schedule:
+    - cron: "20 10 * * *"
+  workflow_dispatch:
+
+# So leitura do repositorio. Os segredos nao vao para execucao vinda de fork.
+permissions:
+  contents: read
+
+concurrency:
+  group: planilha-diaria
+  cancel-in-progress: false
+
+jobs:
+  gerar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias
+        run: pip install --quiet openpyxl
+
+      - name: Conferir o build contra agosto de 2026
+        run: python3 validar.py
+
+      - name: Puxar dados do Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python3 acoes/puxar_dados.py
+
+      - name: Gerar a planilha
+        id: build
+        run: |
+          NOME="QT_escaneamentos_$(TZ=America/Sao_Paulo date +%F).xlsx"
+          echo "nome=$NOME" >> "$GITHUB_OUTPUT"
+          python3 build_planilha_escaneamentos.py "$NOME" > resumo.json
+          python3 -c "import json;d=json.load(open('resumo.json'));print(json.dumps(d['periodo'],ensure_ascii=False,indent=1))"
+          ls -l "$NOME"
+
+      - name: Subir para o Drive e registrar a rodada
+        env:
+          GBP_CLIENT_ID: ${{ secrets.GBP_CLIENT_ID }}
+          GBP_CLIENT_SECRET: ${{ secrets.GBP_CLIENT_SECRET }}
+          GDRIVE_REFRESH_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
+          DRIVE_PASTA_ID: ${{ secrets.DRIVE_PASTA_ID }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python3 acoes/subir_drive.py "${{ steps.build.outputs.nome }}" resumo.json
+
+      # Copia de seguranca: se o Drive falhar, a planilha ainda existe aqui por 14 dias.
+      - name: Guardar a planilha como artefato
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: planilha
+          path: |
+            QT_escaneamentos_*.xlsx
+            resumo.json
+          retention-days: 14
+          if-no-files-found: warn

@@ -1,0 +1,26 @@
+name: Validar o build
+
+# O validar.py confere o build contra os numeros medidos de agosto de 2026.
+# Roda a cada push que mexe no script ou nos fixtures.
+on:
+  push:
+    paths: ["build_planilha_escaneamentos.py", "validar.py", "fixtures/**", "acoes/**", ".github/workflows/validar.yml"]
+  pull_request:
+    paths: ["build_planilha_escaneamentos.py", "validar.py", "fixtures/**", "acoes/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install --quiet openpyxl formulas
+      - run: python3 validar.py
+      - run: python3 acoes/teste_puxar_dados.py
