@@ -14,26 +14,52 @@ Use SOMENTE essas ferramentas. Se precisar de qualquer outra, pare e registre a 
 
 Projeto Supabase `helinoirdizwrluydkzp`:
 
-    select json_agg(t order by t.criado_em) as dados from (
+    select coalesce(json_agg(t order by t.criado_em), '[]'::json) as dados from (
       select id, garcom,
-             to_char(criado_em at time zone 'America/Sao_Paulo','YYYY-MM-DD HH24:MI:SS') as momento,
+             to_char(criado_em at time zone 'America/Sao_Paulo','YYYY-MM-DD HH24:MI:SS.US') as momento,
              coalesce(user_agent,'') as ua, criado_em
       from cliques_avaliacao
     ) t;
 
 Grave o array retornado em `cliques.json`, no diretório de trabalho, exatamente como veio, com as chaves `id`, `garcom`, `momento` e `ua`.
 
+**Os microssegundos no `momento` não são enfeite.** O corte de repetição compara intervalos de até 10 segundos. Truncado em segundo, o mesmo agosto acusa 19 repetições onde há 16, porque um intervalo real de 10,4s aparece como 10s e o clique é descontado sem ser repetição. O `.US` no `to_char` é obrigatório.
+
 ## 2. Puxar as avaliações publicadas
 
-Baixe com `download_file_content` o arquivo de id `<ID_DO_FETCH_REVIEWS>`, decodifique o base64 e salve como `fetch_reviews.py`. Rode:
+São dois SELECT no mesmo projeto. A sincronização com o Google **não roda mais aqui**: quem busca as avaliações é a Edge Function `sincroniza-avaliacoes`, agendada no próprio Supabase (`cron.job` `sincroniza-avaliacoes-diario`, 10h00 UTC, que é 07h00 de São Paulo). Esta tarefa só lê o resultado.
 
-    python3 fetch_reviews.py
+    select coalesce(json_agg(t order by t.criado_em), '[]'::json) as dados from (
+      select review_id, nota,
+             to_char(criado_em at time zone 'America/Sao_Paulo','YYYY-MM-DD HH24:MI:SS.US') as criado_em,
+             to_char(atualizado_em at time zone 'America/Sao_Paulo','YYYY-MM-DD HH24:MI:SS.US') as atualizado_em,
+             coalesce(cliente,'') as cliente, tem_texto, respondida, nota_anterior
+      from avaliacoes
+      where criado_em >= now() - interval '120 days'
+    ) t;
 
-Ele lê as credenciais OAuth das variáveis de ambiente `GBP_CLIENT_ID`, `GBP_CLIENT_SECRET` e `GBP_REFRESH_TOKEN`, chama `reviews.list` da Google Business Profile API paginando de 50 em 50, e grava `avaliacoes.json` com uma entrada por avaliação: `reviewId`, `nota`, `criado_em`, `atualizado_em`, `cliente`, `tem_texto`, `respondida`.
+Grave em `avaliacoes.json`.
 
-**Se esta etapa falhar**, não interrompa a rodada. Grave `avaliacoes.json` como `[]`, siga para o passo 3, e registre a falha no relatório e na notificação. O relatório de escaneamentos sozinho continua tendo valor; o de avaliações é acréscimo.
+    select json_build_object(
+      'nota_exibida', round(nota_exibida::numeric, 1),
+      'total_avaliacoes', total_api,
+      'sincronizado_em', to_char(executado_em at time zone 'America/Sao_Paulo','YYYY-MM-DD HH24:MI')
+    ) as perfil
+    from avaliacoes_sync
+    where ok order by executado_em desc limit 1;
 
-Causas prováveis de falha, para nomear no relatório em vez de dizer só "erro": `401` significa token expirado, e se o app OAuth ainda estiver em modo *Testing* o refresh token morre a cada 7 dias. `403` significa API desabilitada no projeto `685524545181`.
+Grave o objeto retornado em `perfil.json`.
+
+**Confira a data de `sincronizado_em`.** Se a última sincronização bem-sucedida não for de hoje, os dados de avaliação estão velhos: grave `avaliacoes.json` como `[]`, siga para o passo 3 e registre no relatório que a sincronização não rodou, com a data da última que rodou.
+
+**Se qualquer um dos SELECT falhar**, não interrompa a rodada. Grave `avaliacoes.json` como `[]`, siga para o passo 3, e registre a falha no relatório e na notificação. O relatório de escaneamentos sozinho continua tendo valor; o de avaliações é acréscimo.
+
+Para nomear a causa em vez de dizer só "erro", olhe a última linha de `avaliacoes_sync`:
+
+    select ok, executado_em, baixadas, inseridas, alteradas, left(erro, 300) as erro
+    from avaliacoes_sync order by executado_em desc limit 3;
+
+`invalid_grant` no campo `erro` significa refresh token expirado. Enquanto a tela de consentimento OAuth estiver em modo *Testing*, o token morre a cada 7 dias e isso vai acontecer toda semana; não é bug de código. `403` significa API desabilitada no projeto `685524545181`. `LISTAGEM VAZIA` com `n_reviews=0` significa que a função rodou fora da região `sa-east-1`: de us-east-1 o Google devolve 200 com 69 bytes e nenhuma avaliação.
 
 ## 3. Baixar o script e gerar a planilha
 
@@ -82,7 +108,9 @@ O campo `regra_do_zero` decide o fecho, e ele já vem resolvido pelo script:
 - `segunda_fechada`: escreva apenas que não houve escaneamento na véspera porque a casa fecha na segunda. Sem alarme.
 - `zero_operacao`: registre que zerou num dia de operação e sinalize para conferir os QR codes nas mesas e a página de destino.
 - `vazio`: diga que a base não retornou registro nenhum e que vale checar.
-- `sem_avaliacoes`: a etapa 2 falhou. Escreva o relatório de escaneamentos normalmente e registre numa linha que os dados de avaliação não entraram nesta rodada, nomeando a causa.
+- `sem_avaliacoes`: o passo 2 não trouxe avaliação. Escreva o relatório de escaneamentos normalmente e registre numa linha que os dados de avaliação não entraram nesta rodada, nomeando a causa.
+
+O campo `avaliacoes_ausentes` vem separado de propósito: numa segunda-feira sem escaneamento e sem sincronização, `regra_do_zero` é `segunda_fechada` e `avaliacoes_ausentes` é `true`. Registre as duas coisas.
 
 ### Regras de redação, obrigatórias
 
@@ -108,20 +136,20 @@ Nos casos de exceção, use a linha curta equivalente:
 
     QT 10/08: zero escaneamentos, casa fechada na segunda.
     QT 12/08: zero escaneamentos num dia de operacao, conferir os QR nas mesas.
-    QT 07/08: 23 escaneamentos. Dados de avaliacao fora nesta rodada, token expirado.
+    QT 07/08: 23 escaneamentos. Dados de avaliacao fora nesta rodada, sincronizacao nao rodou.
     QT 09/08: falha ao gerar o relatorio, base ou Drive fora do ar.
 
 Envie sempre, inclusive quando o total for zero e inclusive quando algo falhar. É o canal que alcança o Matheus fora do aplicativo, então rodada sem notificação é rodada perdida.
 
 ---
 
-## Anexo — o que muda no `build.py`
+## Anexo — o que o `build.py` v2 já faz
 
-O `build.py` atual só conhece `cliques.json`. Para esta versão do prompt funcionar, ele precisa passar a ler `avaliacoes.json` também. Mantidos: `JANELA_S = 10` com chave `(garcom, ua)`, a reconstrução integral a cada execução, as abas Diário, Matriz, Atendentes, Base e Leitura, e a identidade visual.
+Implementado e conferido contra agosto de 2026. Mantidos da v1: `JANELA_S = 10` com chave `(garcom, ua)`, a reconstrução integral a cada execução, as abas Diário, Matriz, Atendentes, Base e Leitura, e a identidade visual.
 
-**Acréscimos:**
+**Acrescentado:**
 
-1. Ler `avaliacoes.json` se existir. Ausente ou vazio, o script roda como hoje e devolve `regra_do_zero = "sem_avaliacoes"`.
+1. Lê `avaliacoes.json` e `perfil.json` se existirem. Ausentes ou vazios, o script roda como a v1 rodava e devolve `regra_do_zero = "sem_avaliacoes"` com `avaliacoes_ausentes = true`.
 
 2. Pareamento 1 para 1 entre escaneamento e avaliação, sobre a lista já líquida de repetições:
    - avaliações do dia em ordem de `criado_em`;
@@ -132,18 +160,18 @@ O `build.py` atual só conhece `cliques.json`. Para esta versão do prompt funci
 
    A janela de 10 minutos foi medida, não arbitrada: mediana de 54 segundos entre o escaneamento e o envio, p95 em 6,4 minutos, e nenhuma ocorrência entre 20 e 60 minutos.
 
-3. Colunas novas em Diário e Atendentes: `viraram_nota`, `perdidos`, `conversao`, `media_notas`. Matriz e Atendentes seguem sendo fórmulas sobre Diário.
+3. Colunas novas em Diário e Atendentes: `viraram_nota`, `perdidos`, `conversao`, `media_notas`. Matriz, Atendentes e Pagamento seguem sendo fórmulas sobre Diário e Pareamento.
 
-4. Aba nova **Pareamento**, uma linha por par com atendente, hora do escaneamento, hora da avaliação, defasagem em minutos, nota e se tem texto. É a aba de auditoria de pagamento.
+4. Aba **Pareamento**, uma linha por par com atendente, hora do escaneamento, hora da avaliação, defasagem em minutos, nota e se tem texto. É a aba de auditoria de pagamento. As avaliações órfãs vão num bloco separado no pé da mesma aba.
 
-5. Aba nova **Pagamento**, com os parâmetros em células editáveis (R$ 2,00 por avaliação, R$ 50,00 por lote de 40) e o cálculo por atendente em fórmula, nunca em número fixo.
+5. Aba **Pagamento**, com os parâmetros em células editáveis (R$ 2,00 por avaliação, R$ 50,00 por lote de 40) e o cálculo por atendente em fórmula, nunca em número fixo.
 
-6. Guardar `nota` e `atualizado_em` por `reviewId` entre execuções, e emitir `notas_alteradas` quando a nota de um `reviewId` conhecido mudar. Em agosto, 135 das 934 avaliações têm `atualizado_em` diferente de `criado_em`, ou seja, foram editadas. Uma nota 5 que vira 2 depois do pagamento passa despercebida sem isso.
+6. `notas_alteradas` sai de duas fontes: a coluna `nota_anterior`, que a Edge Function grava quando a nota de um `review_id` conhecido muda, e um estado local `avaliacoes_estado.json`, útil quando o script roda em host que guarda arquivo. Em agosto, 135 das 944 avaliações têm `atualizado_em` diferente de `criado_em`.
 
-7. Marcar escaneamento antes das 18h como `teste`, fora do denominador da conversão. Em 05/08 houve dois, às 17h27 e 17h30, antes da abertura.
+7. Escaneamento antes das 18h fica marcado como `teste` na aba Base. O JSON traz `scans_teste` e `conversao_sem_teste` ao lado de `conversao`, porque os dois denominadores são defensáveis e a escolha é do Matheus, não do script.
 
-8. Campos novos no JSON de saída: `conversao_ontem`, `media_notas_ontem`, `orfas_ontem`, `notas_alteradas`, `perfil_google` (com `nota_exibida` e `total_avaliacoes`), e `viraram_nota` dentro de cada item de `ontem_por_atendente`.
+8. Campos novos no JSON de saída: `conversao_ontem`, `media_notas_ontem`, `orfas_ontem`, `viraram_nota_ontem`, `scans_teste_ontem`, `notas_alteradas`, `perfil_google` (com `nota_exibida` e `total_avaliacoes`), `avaliacoes_ausentes`, o bloco `periodo`, e `viraram_nota` dentro de cada item de `ontem_por_atendente`.
 
-**Referência de layout:** a planilha `QT-scans-x-avaliacoes-agosto.xlsx` tem as abas Diário, Pareamento e Pagamento no formato esperado, já preenchidas com agosto de 2026.
+**Referência de layout:** a planilha `QT-scans-x-avaliacoes-agosto.xlsx` tem as abas no formato esperado, já preenchidas com agosto de 2026.
 
-**Números de agosto de 2026 para validar a implementação:** 196 cliques brutos, 16 descontados, 180 contados, 112 pares, 14 órfãs, 68 perdidos, conversão de 62,2%.
+**Validação:** `python3 validar.py` roda o build sobre os dados de agosto e confere contra os números medidos: 196 cliques brutos, 16 descontados, 180 contados, 126 avaliações, 112 pares, 14 órfãs, 68 perdidos, conversão de 62,2%, e a tabela por atendente com o total de R$ 324.
