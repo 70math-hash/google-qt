@@ -63,7 +63,7 @@ Para nomear a causa em vez de dizer só "erro", olhe a última linha de `avaliac
 
 ## 3. Baixar o script e gerar a planilha
 
-Baixe com `download_file_content` o arquivo de id `1AHv9xdMrcg__gE_V5bk61cYZ4wnYwkfj`, decodifique o base64 e salve como `build.py`. Esse script é a definição oficial da planilha, não reescreva nem improvise uma versão própria.
+Baixe com `download_file_content` o arquivo de id `1cel_jwKuzsJeB9LOktB6KegKYnN1bpvp`, decodifique o base64 e salve como `build.py`. Esse script é a definição oficial da planilha, não reescreva nem improvise uma versão própria.
 
     python3 build.py QT_escaneamentos_AAAA-MM-DD.xlsx
 
