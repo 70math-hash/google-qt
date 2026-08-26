@@ -253,23 +253,37 @@ errada.
 **Armadilha:** `locations.list` devolve `locations/{id}`. A v4 espera só o número.
 Concatenar direto vira `locations/locations/{id}` e retorna 404 sem mensagem útil.
 
-**OAuth — dívida técnica com prazo**
+**OAuth — resolvido em 26/08/2026**
 
-A tela de consentimento está em modo **Testing**. O refresh token expira em 7 dias,
-confirmado pelo próprio Google (`refresh_token_expires_in: 604799`). O token atual
-**morre em 01/09/2026**.
+O app está **Em Produção** e a marca foi verificada. O prazo de 7 dias acabou: a
+resposta do grant `refresh_token` não traz mais `refresh_token_expires_in`, medido
+pela Edge Function `sonda-reviews`. Não há mais `invalid_grant` semanal a esperar.
 
-Para resolver: publicar o app como Em Produção. O Branding exige página inicial,
-política de privacidade e termos de serviço no domínio da QT, verificado no Search
-Console. Enquanto não estiver feito, qualquer `invalid_grant` semanal é isto, não é
-bug do código.
+O que foi preciso, na ordem: publicar `qtpizzabar.com.br/privacidade` e
+`/termos` (com link no rodapé da home, que o revisor cobra), verificar o domínio no
+Search Console por registro TXT, e renomear o app de "QT Avaliações" para
+**"QT Pizza Bar"**, porque o Google exige que o nome da tela de consentimento bata
+com o nome na página inicial.
+
+**Armadilha, se algum dia voltar a Testing:** publicar o app **não conserta um token
+já emitido**. O prazo fica gravado no token no momento da emissão, então é preciso
+refazer o consentimento e trocar `GBP_REFRESH_TOKEN`. Medido: com o app já Em
+Produção, o token antigo continuou reportando 6 dias de validade.
+
+O escopo `business.manage` é confidencial e ainda não passou por revisão de escopo,
+então a tela "App não verificado" aparece ao reautorizar. É esperado e inofensivo:
+Avançado, e seguir. O limite de 100 usuários não incomoda, o app tem um.
 
 **Segredos**
 
-Nunca no repositório. O client secret já vazou em prints de conversa e **precisa ser
-rotacionado**: crie um secret novo no console (máximo dois por client), migre, depois
-desabilite e apague o antigo. Trocar o secret não invalida refresh token, porque o
-token é vinculado ao client ID.
+Nunca no repositório. O client secret já vazou em prints de conversa e **continua
+pendente de rotação** em 26/08/2026: crie um secret novo no console (máximo dois por
+client), migre, depois desabilite e apague o antigo. Trocar o secret não invalida
+refresh token, porque o token é vinculado ao client ID.
+
+Deixou de ser urgente quando o OAuth foi publicado, porque não há mais um prazo de
+7 dias por cima. Continua sendo dívida: faça numa janela calma, com as duas chaves
+vivas ao mesmo tempo, e só apague a antiga depois que a `sonda-reviews` passar.
 
 **Supabase**
 - Projeto `helinoirdizwrluydkzp`
