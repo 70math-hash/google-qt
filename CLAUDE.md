@@ -42,7 +42,10 @@ relatório e planilha 08:00". Roda todo dia às 08h00 desde 07/08/2026, sem falh
 Puxa `cliques_avaliacao` do Supabase, baixa `build.py` do Drive, gera a planilha,
 sobe no Drive, escreve o relatório e dispara PushNotification.
 
-**`build_planilha_escaneamentos.py`** no Drive, id `1cel_jwKuzsJeB9LOktB6KegKYnN1bpvp` (v2, desde 26/08/2026).
+**`build_planilha_escaneamentos.py`** no Drive, id `11dfk2ukTHgW1bEN2m7iapYUsT2h_QuB8` (v2.1, desde 26/08/2026).
+A tarefa diária acha o arquivo **pelo título**, não pelo id, então trocar de versão não exige
+mexer no prompt. Só pode existir um arquivo com esse título exato; as versões velhas ficam
+renomeadas com sufixo.
 É a definição oficial da planilha. Abas: Diário, Matriz, Pareamento, Atendentes, Pagamento, Base, Leitura.
 Reconstrói tudo a cada execução, nunca acrescenta linha. Matriz e Atendentes são
 fórmulas sobre Diário.
@@ -292,7 +295,8 @@ vivas ao mesmo tempo, e só apague a antiga depois que a `sonda-reviews` passar.
 
 **Google Drive**
 - Pasta `14Iv1VAMACSXY100eKp4g495OYPTsGgS0`
-- `build_planilha_escaneamentos.py` id `1cel_jwKuzsJeB9LOktB6KegKYnN1bpvp` (v2). A v1 ficou como `build_planilha_escaneamentos_v1_ate_2026-08-26.py`, id `1AHv9xdMrcg__gE_V5bk61cYZ4wnYwkfj`, para rollback
+- `build_planilha_escaneamentos.py` id `11dfk2ukTHgW1bEN2m7iapYUsT2h_QuB8` (v2.1). Procurar pelo título, não pelo id
+- Rollback: `build_planilha_escaneamentos_v2.0_ate_2026-08-26.py` id `1cel_jwKuzsJeB9LOktB6KegKYnN1bpvp`, e `build_planilha_escaneamentos_v1_ate_2026-08-26.py` id `1AHv9xdMrcg__gE_V5bk61cYZ4wnYwkfj`
 - `fetch_reviews.py` id `1rTd34qEBdfqyVhKgNAeHAOJiHJ-la53E`
 
 ---

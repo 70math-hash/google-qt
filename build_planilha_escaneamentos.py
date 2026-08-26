@@ -203,16 +203,24 @@ for r in validos:
 wb = Workbook()
 
 
-def cabecalho(ws, titulo, sub, largura, linhas=0):
+def cabecalho(ws, titulo, sub, largura, linhas=0, fundo=True):
+    """`linhas` e quantas linhas a aba realmente usa.
+
+    O fundo branco e pintado celula a celula, entao pintar alem do conteudo
+    incha o arquivo sem aparecer. Com a base crescendo, o .xlsx passou de 50 KB
+    e o upload para o Drive, que trafega o arquivo inteiro em base64, comecou a
+    ser truncado. Pintar so o que existe cortou 22%.
+    """
     ws.sheet_view.showGridLines = False
     ws["A1"] = "QT PIZZA BAR"
     ws["A1"].font = Font(name=FONTE, size=9, bold=True, color=CINZA)
     ws["A2"] = titulo; ws["A2"].font = F_TIT
     ws["A3"] = sub; ws["A3"].font = F_SUB
-    for row in ws.iter_rows(min_row=1, max_row=max(60, linhas or len(reg) + 20),
-                            min_col=1, max_col=largura):
-        for c in row:
-            c.fill = FILL_BG
+    if fundo:
+        for row in ws.iter_rows(min_row=1, max_row=(linhas + 4) if linhas else 60,
+                                min_col=1, max_col=largura):
+            for c in row:
+                c.fill = FILL_BG
     ws.row_dimensions[2].height = 24
 
 
@@ -229,7 +237,8 @@ def faixa(ws, linha, valores, larguras):
 # ---- Diario
 ws = wb.active; ws.title = "Diario"
 cabecalho(ws, "Escaneamentos e avaliacoes por dia e atendente",
-          "Formato longo, ja liquido de repeticoes. Base para tabela dinamica.", 10)
+          "Formato longo, ja liquido de repeticoes. Base para tabela dinamica.", 10,
+          linhas=6 + len(dias) * len(atendentes) + 3)
 faixa(ws, 5, ["Data", "Dia", "Atendente", "Escaneamentos", "Viraram nota", "Perdidos",
               "Conversao", "Media das notas", "Primeiro", "Ultimo"],
       [13, 7, 18, 15, 14, 11, 12, 15, 11, 11])
@@ -268,7 +277,7 @@ RN = f"Diario!$E${PRIM_DIARIO}:$E${FIM}"
 ws = wb.create_sheet("Matriz")
 cabecalho(ws, "Matriz dia x atendente",
           "Leitura rapida da semana. Todas as celulas sao formulas sobre a aba Diario.",
-          len(atendentes) + 2)
+          len(atendentes) + 2, linhas=6 + len(dias) + 2)
 faixa(ws, 5, ["Data"] + atendentes + ["Total da casa"],
       [13] + [16] * len(atendentes) + [16])
 linha = 6
@@ -306,7 +315,8 @@ RP_NT = f"Pareamento!$G${PAR_PRIM}:$G${PAR_ULT}"
 # ---- Atendentes
 ws = wb.create_sheet("Atendentes")
 cabecalho(ws, "Consolidado por atendente",
-          "Acumulado do periodo. Participacao e sobre o total da casa.", 10)
+          "Acumulado do periodo. Participacao e sobre o total da casa.", 10,
+          linhas=6 + len(atendentes) + 5)
 faixa(ws, 5, ["Atendente", "Escaneamentos", "Viraram nota", "Perdidos", "Conversao",
               "Media das notas", "Dias com leitura", "Media por dia com leitura",
               "Participacao", "Ultimo escaneamento"],
@@ -354,7 +364,8 @@ ws.cell(row=linha + 3, column=1,
 ws = ws_par
 cabecalho(ws, "Pareamento escaneamento x avaliacao",
           f"Uma linha por par. Janela de {JANELA_MIN} minutos, cada escaneamento consumido "
-          "uma unica vez. Aba de auditoria do pagamento.", 9, linhas=len(pares) + 30)
+          "uma unica vez. Aba de auditoria do pagamento.", 9,
+          linhas=6 + len(pares) + len(orfas) + 10)
 faixa(ws, 5, ["#", "Atendente", "Data", "Hora do scan", "Hora da avaliacao",
               "Defasagem (min)", "Nota", "Cliente", "Tem texto"],
       [6, 16, 13, 14, 16, 15, 8, 26, 11])
@@ -493,7 +504,8 @@ for lin in range(PRIM_DIARIO, FIM + 1):
 # ---- Base
 ws = wb.create_sheet("Base")
 cabecalho(ws, "Base de cliques",
-          "Todos os registros, inclusive os descontados. Use para auditar um numero estranho.", 7)
+          "Todos os registros, inclusive os descontados. Use para auditar um numero estranho.", 7,
+          fundo=False)
 faixa(ws, 5, ["ID", "Data e hora", "Atendente", "Aparelho e navegador",
               "Intervalo do anterior (s)", "Descontado", "Situacao"],
       [7, 22, 16, 30, 22, 13, 14])

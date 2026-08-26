@@ -63,21 +63,25 @@ Para nomear a causa em vez de dizer só "erro", olhe a última linha de `avaliac
 
 ## 3. Baixar o script e gerar a planilha
 
-Baixe com `download_file_content` o arquivo de id `1cel_jwKuzsJeB9LOktB6KegKYnN1bpvp`, decodifique o base64 e salve como `build.py`. Esse script é a definição oficial da planilha, não reescreva nem improvise uma versão própria.
+Ache o script **pelo nome, não pelo id**, porque o id muda a cada versão nova:
+
+    search_files com query: title = 'build_planilha_escaneamentos.py'
+
+Tem que voltar exatamente um arquivo. Se vier mais de um, pare e registre no relatório: significa que uma versão antiga ficou sem renomear, e escolher a errada faz a planilha sair com abas a menos.
+
+Baixe com `download_file_content`, decodifique o base64 e salve como `build.py`. Esse script é a definição oficial da planilha, não reescreva nem improvise uma versão própria.
 
     python3 build.py QT_escaneamentos_AAAA-MM-DD.xlsx
 
-Use a data de hoje em São Paulo no nome. Depois recalcule, passo obrigatório, senão as fórmulas chegam sem valor em cache e a planilha abre com células vazias:
+Use a data de hoje em São Paulo no nome.
 
-    python3 /root/.claude/skills/xlsx/scripts/recalc.py QT_escaneamentos_AAAA-MM-DD.xlsx
-
-O recalc precisa terminar com `"status": "success"` e `"total_errors": 0`. Se acusar erro, relate e não suba o arquivo.
+**Não existe passo de recálculo, e isso é de propósito.** Excel, LibreOffice e Google Sheets recalculam fórmula ao abrir, então a planilha não precisa chegar com valor em cache. O prompt antigo exigia rodar o `recalc.py`, que depende do LibreOffice e passou a falhar no contêiner. Se você achar que a planilha "está sem valores", ela não está: abra e veja.
 
 O `build.py` imprime um JSON no final. É dele que sai todo o texto do relatório. Não recalcule nada por fora: o script já aplica o desconto de repetição e o pareamento, e usar outra fonte faria o texto discordar da planilha.
 
-## 4. Subir para o Drive
+## 4. Subir para o Drive, e conferir que subiu inteiro
 
-Leia o .xlsx em base64 e envie com `create_file`:
+Antes de subir, **anote o tamanho do .xlsx em bytes**. Leia o arquivo em base64 e envie com `create_file`:
 
 - `parentId`: `14Iv1VAMACSXY100eKp4g495OYPTsGgS0`
 - `contentMimeType`: `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
@@ -85,6 +89,12 @@ Leia o .xlsx em base64 e envie com `create_file`:
 - `title`: o mesmo nome do arquivo
 
 Guarde o `viewUrl` que a resposta devolve, para citar no relatório.
+
+**Conferência obrigatória.** Chame `get_file_metadata` no id devolvido e compare o `fileSize` com o tamanho local. Iguais, seguiu. Diferentes, o upload foi truncado: suba de novo.
+
+Se truncar duas vezes, **não deixe o arquivo no Drive com nome de bom**. Renomeie para `TRUNCADO_` mais o nome, escreva o relatório de texto normalmente, que ele não depende da planilha, e registre no relatório e na notificação que a planilha não subiu.
+
+Isso não é hipótese. Em 26/08/2026 aconteceu duas vezes no mesmo dia: subiram 11 KB e 15 KB no lugar de 35 KB e 50 KB. O arquivo truncado é traiçoeiro porque abre normalmente e mostra os nomes das abas certos, só que sem nenhuma célula dentro. O que sobrevive é o `workbook.xml`, que fica no começo do zip e guarda os nomes.
 
 ## 5. Escrever o relatório
 
